@@ -1,0 +1,38 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <title>Live Stream Dashboard</title>
+  <script src="/socket.io/socket.io.js"></script>
+  <style>
+    body { font-family: monospace; background: #0b0b0b; color: #00ff99; padding: 1.5rem; }
+    h1 { color: #fff; }
+    .stats { margin-bottom: 1rem; }
+    pre { max-height: 70vh; overflow-y: scroll; background: #111; padding: 10px; border-radius: 6px; }
+  </style>
+</head>
+<body>
+  <h1>📡 Stream Dashboard</h1>
+  <div class="stats">
+    Viewers: <span id="vcount">0</span> |
+    FFmpeg: <span id="ffalive">-</span> |
+    Time: <span id="time">-</span>
+  </div>
+  <pre id="logs"></pre>
+
+  <script>
+    const socket = io();
+    const logs = document.getElementById("logs");
+    socket.on("stats", d => {
+      document.getElementById("vcount").textContent = d.viewers;
+      document.getElementById("ffalive").textContent = d.ffmpegAlive ? "✅ Running" : "❌ Stopped";
+      document.getElementById("time").textContent = new Date(d.time).toLocaleTimeString();
+    });
+    socket.on("log", l => {
+      logs.textContent += `[${l.timestamp}] [${l.level}] ${l.message}\n`;
+      if (logs.textContent.length > 5000) logs.textContent = logs.textContent.slice(-4000);
+      logs.scrollTop = logs.scrollHeight;
+    });
+  </script>
+</body>
+</html>

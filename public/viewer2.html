@@ -1,0 +1,637 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Live Stream</title>
+    <style>
+      * {
+        margin: 0;
+        padding: 0;
+        box-sizing: border-box;
+      }
+
+      body {
+        background: linear-gradient(135deg, #0f0f0f 0%, #1a1a1a 100%);
+        color: #fff;
+        font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        justify-content: center;
+        min-height: 100vh;
+        padding: 20px;
+      }
+
+      .container {
+        width: 100%;
+        max-width: 1280px;
+        display: flex;
+        flex-direction: column;
+        gap: 20px;
+      }
+
+      .video-wrapper {
+        position: relative;
+        background: #000;
+        border-radius: 16px;
+        overflow: hidden;
+        box-shadow: 0 20px 60px rgba(0, 0, 0, 0.5);
+      }
+
+      video {
+        width: 100%;
+        height: auto;
+        display: block;
+        background: #000;
+      }
+
+      .status-bar {
+        background: rgba(0, 0, 0, 0.8);
+        backdrop-filter: blur(10px);
+        padding: 15px 25px;
+        border-radius: 12px;
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        flex-wrap: wrap;
+        gap: 15px;
+      }
+
+      .status-item {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        font-size: 14px;
+      }
+
+      .status-indicator {
+        width: 10px;
+        height: 10px;
+        border-radius: 50%;
+        background: #666;
+        animation: pulse 2s infinite;
+      }
+
+      .status-indicator.live {
+        background: #ff4444;
+        box-shadow: 0 0 10px rgba(255, 68, 68, 0.5);
+      }
+
+      .status-indicator.connected {
+        background: #44ff44;
+        box-shadow: 0 0 10px rgba(68, 255, 68, 0.5);
+      }
+
+      @keyframes pulse {
+        0%, 100% { opacity: 1; }
+        50% { opacity: 0.5; }
+      }
+
+      .metrics {
+        background: rgba(0, 0, 0, 0.6);
+        padding: 15px 25px;
+        border-radius: 12px;
+        display: grid;
+        grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+        gap: 15px;
+      }
+
+      .metric {
+        display: flex;
+        flex-direction: column;
+        gap: 5px;
+      }
+
+      .metric-label {
+        font-size: 12px;
+        color: #999;
+        text-transform: uppercase;
+        letter-spacing: 0.5px;
+      }
+
+      .metric-value {
+        font-size: 20px;
+        font-weight: 600;
+        color: #00ff88;
+      }
+
+      .loading-overlay {
+        position: absolute;
+        top: 0;
+        left: 0;
+        right: 0;
+        bottom: 0;
+        background: rgba(0, 0, 0, 0.9);
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        justify-content: center;
+        gap: 20px;
+        z-index: 10;
+      }
+
+      .loading-overlay.hidden {
+        display: none;
+      }
+
+      .spinner {
+        width: 50px;
+        height: 50px;
+        border: 4px solid rgba(255, 255, 255, 0.1);
+        border-top-color: #00ff88;
+        border-radius: 50%;
+        animation: spin 1s linear infinite;
+      }
+
+      @keyframes spin {
+        to { transform: rotate(360deg); }
+      }
+
+      .error-message {
+        background: rgba(255, 68, 68, 0.2);
+        border: 1px solid #ff4444;
+        color: #ff4444;
+        padding: 15px 25px;
+        border-radius: 12px;
+        text-align: center;
+        display: none;
+      }
+
+      .error-message.visible {
+        display: block;
+      }
+
+      .controls {
+        display: flex;
+        gap: 10px;
+        flex-wrap: wrap;
+      }
+
+      button {
+        background: rgba(255, 255, 255, 0.1);
+        border: 1px solid rgba(255, 255, 255, 0.2);
+        color: #fff;
+        padding: 10px 20px;
+        border-radius: 8px;
+        cursor: pointer;
+        font-size: 14px;
+        transition: all 0.2s;
+      }
+
+      button:hover {
+        background: rgba(255, 255, 255, 0.2);
+        transform: translateY(-2px);
+      }
+
+      button:active {
+        transform: translateY(0);
+      }
+
+      @media (max-width: 768px) {
+        .status-bar, .metrics {
+          padding: 12px 15px;
+        }
+
+        .metric-value {
+          font-size: 18px;
+        }
+      }
+    </style>
+  </head>
+  <body>
+    <div class="container">
+      <div class="video-wrapper">
+        <video id="video" controls autoplay muted playsinline></video>
+        <div class="loading-overlay" id="loadingOverlay">
+          <div class="spinner"></div>
+          <div id="loadingText">Loading FLV.js...</div>
+        </div>
+      </div>
+
+      <div class="error-message" id="errorMessage"></div>
+
+      <div class="status-bar">
+        <div class="status-item">
+          <div class="status-indicator" id="streamIndicator"></div>
+          <span id="streamStatus">Initializing...</span>
+        </div>
+        <div class="status-item">
+          <span>👥 Viewers: <strong id="viewerCount">0</strong></span>
+        </div>
+        <div class="controls">
+          <button onclick="reconnect()">🔄 Reconnect</button>
+          <button onclick="toggleMute()">🔇 Mute/Unmute</button>
+        </div>
+      </div>
+
+      <div class="metrics">
+        <div class="metric">
+          <div class="metric-label">Latency</div>
+          <div class="metric-value" id="latency">-- ms</div>
+        </div>
+        <div class="metric">
+          <div class="metric-label">Buffer</div>
+          <div class="metric-value" id="buffer">-- s</div>
+        </div>
+        <div class="metric">
+          <div class="metric-label">Dropped Frames</div>
+          <div class="metric-value" id="droppedFrames">0</div>
+        </div>
+        <div class="metric">
+          <div class="metric-label">Video Quality</div>
+          <div class="metric-value" id="quality">--</div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Load Socket.IO -->
+    <script src="/socket.io/socket.io.js"></script>
+    
+    <!-- Load FLV.js from CDN as fallback -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/flv.js/1.6.2/flv.min.js"></script>
+
+    <script>
+      const video = document.getElementById("video");
+      const loadingOverlay = document.getElementById("loadingOverlay");
+      const loadingText = document.getElementById("loadingText");
+      const errorMessage = document.getElementById("errorMessage");
+      const streamStatus = document.getElementById("streamStatus");
+      const streamIndicator = document.getElementById("streamIndicator");
+      const viewerCount = document.getElementById("viewerCount");
+      const latencyEl = document.getElementById("latency");
+      const bufferEl = document.getElementById("buffer");
+      const droppedFramesEl = document.getElementById("droppedFrames");
+      const qualityEl = document.getElementById("quality");
+
+      let socket;
+      let flvPlayer = null;
+      let reconnectAttempts = 0;
+      let maxReconnectAttempts = 10;
+      let metricsInterval;
+
+      // Utility functions
+      function showError(message) {
+        errorMessage.textContent = message;
+        errorMessage.classList.add("visible");
+        console.error("❌ Error:", message);
+      }
+
+      function hideError() {
+        errorMessage.classList.remove("visible");
+      }
+
+      function updateStatus(status, isLive = false, isConnected = false) {
+        streamStatus.textContent = status;
+        streamIndicator.className = "status-indicator";
+        
+        if (isLive) {
+          streamIndicator.classList.add("live");
+        } else if (isConnected) {
+          streamIndicator.classList.add("connected");
+        }
+      }
+
+      function hideLoading() {
+        loadingOverlay.classList.add("hidden");
+      }
+
+      function showLoading(text = "Loading...") {
+        loadingOverlay.classList.remove("hidden");
+        loadingText.textContent = text;
+      }
+
+      // Toggle mute
+      window.toggleMute = function() {
+        video.muted = !video.muted;
+        console.log("🔊 Mute toggled:", video.muted);
+      };
+
+      // Reconnect function
+      window.reconnect = function() {
+        console.log("🔄 Manual reconnect triggered");
+        reconnectAttempts = 0;
+        initPlayer();
+      };
+
+      // Update metrics
+      function updateMetrics() {
+        if (!flvPlayer || !video) return;
+
+        try {
+          // Calculate buffer
+          if (video.buffered.length > 0) {
+            const buffer = video.buffered.end(0) - video.currentTime;
+            bufferEl.textContent = buffer.toFixed(2) + " s";
+          }
+
+          // Dropped frames
+          if (video.getVideoPlaybackQuality) {
+            const quality = video.getVideoPlaybackQuality();
+            droppedFramesEl.textContent = quality.droppedVideoFrames;
+          }
+
+          // Video quality
+          if (video.videoWidth && video.videoHeight) {
+            qualityEl.textContent = `${video.videoWidth}x${video.videoHeight}`;
+          }
+
+          // Approximate latency
+          const stats = flvPlayer.statisticsInfo;
+          if (stats && stats.speed) {
+            const estimatedLatency = (video.buffered.length > 0) 
+              ? (video.buffered.end(0) - video.currentTime) * 1000 
+              : 0;
+            latencyEl.textContent = Math.round(estimatedLatency) + " ms";
+          }
+        } catch (e) {
+          console.warn("⚠️ Error updating metrics:", e);
+        }
+      }
+
+      // Initialize Socket.IO
+      function initSocket() {
+        console.log("🔌 Initializing Socket.IO...");
+        
+        socket = io({
+          transports: ['websocket', 'polling'],
+          reconnection: true,
+          reconnectionDelay: 1000,
+          reconnectionDelayMax: 5000,
+          reconnectionAttempts: Infinity
+        });
+
+        socket.on("connect", () => {
+          console.log("✅ Socket.IO connected");
+          hideError();
+        });
+
+        socket.on("disconnect", () => {
+          console.log("❌ Socket.IO disconnected");
+          updateStatus("Disconnected from server", false, false);
+        });
+
+        socket.on("viewerCount", (count) => {
+          viewerCount.textContent = count;
+          console.log("👥 Viewer count updated:", count);
+        });
+
+        socket.on("streamStatus", (data) => {
+          console.log("📡 Stream status:", data);
+          if (data.live) {
+            updateStatus("Stream is LIVE", true, true);
+          } else {
+            updateStatus("Stream offline", false, false);
+          }
+        });
+
+        socket.on("connect_error", (error) => {
+          console.error("❌ Socket connection error:", error);
+          showError("Connection error. Retrying...");
+        });
+      }
+
+      // Initialize FLV Player
+      async function initPlayer() {
+        console.log("🎬 Initializing FLV player...");
+        hideError();
+        showLoading("Checking FLV.js support...");
+
+        // Check if flvjs is loaded
+        if (typeof flvjs === 'undefined') {
+          showError("FLV.js library not loaded. Please refresh the page.");
+          console.error("❌ flvjs is not defined!");
+          return;
+        }
+
+        // Cleanup existing player
+        if (flvPlayer) {
+          console.log("🧹 Destroying previous player...");
+          try {
+            flvPlayer.pause();
+            flvPlayer.unload();
+            flvPlayer.detachMediaElement();
+            flvPlayer.destroy();
+          } catch (e) {
+            console.warn("⚠️ Error during cleanup:", e);
+          }
+          flvPlayer = null;
+        }
+
+        // Stop metrics updates
+        if (metricsInterval) {
+          clearInterval(metricsInterval);
+        }
+
+        try {
+          // Fetch stream info
+          showLoading("Fetching stream information...");
+          console.log("📡 Fetching stream info from /api/info");
+          
+          const res = await fetch("/api/info");
+          if (!res.ok) {
+            throw new Error(`HTTP ${res.status}: ${res.statusText}`);
+          }
+          
+          const data = await res.json();
+          const streamURL = data.flv;
+          
+          console.log("📍 Stream URL:", streamURL);
+          console.log("📊 Stream info:", data);
+
+          // Check if FLV.js is supported
+          if (!flvjs.isSupported()) {
+            throw new Error("FLV.js is not supported in this browser. Please use Chrome, Firefox, or Edge.");
+          }
+
+          showLoading("Creating FLV player...");
+          console.log("✅ FLV.js is supported");
+          console.log("🎯 Creating player with ultra-low latency config...");
+
+          // Create player with EXTREME LOW LATENCY settings
+          flvPlayer = flvjs.createPlayer({
+            type: "flv",
+            isLive: true,
+            url: streamURL,
+            hasAudio: true,
+            hasVideo: true,
+          }, {
+            enableWorker: false, // Disable for immediate processing
+            enableStashBuffer: false, // CRITICAL: No buffering at all
+            stashInitialSize: 0, // Zero buffer on start
+            autoCleanupSourceBuffer: true, // Clean old data immediately
+            autoCleanupMaxBackwardDuration: 1, // Keep only 0.5s of history
+            autoCleanupMinBackwardDuration: 0.5, // Clean aggressively
+            fixAudioTimestampGap: false, // Don't fix gaps - reduce latency
+            lazyLoad: false, // Load immediately
+            lazyLoadMaxDuration: 0, // No lazy loading
+            lazyLoadRecoverDuration: 0,
+            deferLoadAfterSourceOpen: false, // Start immediately
+            seekType: 'range', // Faster seeking
+            seekParamStart: 'start',
+            seekParamEnd: 'end',
+            rangeLoadZeroStart: false,
+            reuseRedirectedURL: true,
+            // EXTREME latency reduction
+            liveBufferLatencyChasing: true, // Always chase live edge
+            liveBufferLatencyChasingOnPaused: false,
+            liveBufferLatencyMaxLatency: 0.2, // Max 200ms latency (reduced from 1.5s)
+            liveBufferLatencyMinRemain: 0.1, // Min 100ms buffer (reduced from 0.3s)
+            liveSync: true, // Stay synced to live
+            liveSyncDuration: 0.3, // Sync duration
+            liveSyncDurationCount: 3, // Sync aggressively
+          });
+
+          console.log("✅ FLV player created");
+          showLoading("Attaching to video element...");
+          flvPlayer.attachMediaElement(video);
+          
+          showLoading("Loading stream...");
+          flvPlayer.load();
+          console.log("✅ Stream loading...");
+
+          // Event listeners
+          flvPlayer.on(flvjs.Events.LOADING_COMPLETE, () => {
+            console.log("✅ Loading complete");
+          });
+
+          flvPlayer.on(flvjs.Events.MEDIA_INFO, (info) => {
+            console.log("✅ Stream connected!");
+            console.log("📺 Media info:", info);
+            hideLoading();
+            updateStatus("Connected - LIVE", true, true);
+            reconnectAttempts = 0;
+            
+            // Start metrics updates
+            metricsInterval = setInterval(updateMetrics, 1000);
+          });
+
+          flvPlayer.on(flvjs.Events.STATISTICS_INFO, (stats) => {
+            // Too verbose - comment out if needed
+            // console.log("📊 Stats:", stats);
+          });
+
+          flvPlayer.on(flvjs.Events.ERROR, (errType, errDetail) => {
+            console.error("❌ FLV.js error:", errType, errDetail);
+            
+            let message = "Unknown error";
+            
+            if (errType === flvjs.ErrorTypes.NETWORK_ERROR) {
+              message = "Network error. Check if stream is active.";
+            } else if (errType === flvjs.ErrorTypes.MEDIA_ERROR) {
+              message = "Media error. Stream may be corrupted.";
+            } else if (errType === flvjs.ErrorTypes.OTHER_ERROR) {
+              message = "Playback error occurred.";
+            }
+
+            showError(message + " Retrying...");
+            updateStatus("Error - Reconnecting...", false, false);
+
+            // Auto-reconnect with exponential backoff
+            if (reconnectAttempts < maxReconnectAttempts) {
+              reconnectAttempts++;
+              const delay = Math.min(1000 * Math.pow(2, reconnectAttempts - 1), 10000);
+              console.log(`🔄 Reconnect attempt ${reconnectAttempts}/${maxReconnectAttempts} in ${delay}ms`);
+              setTimeout(initPlayer, delay);
+            } else {
+              showError("Max reconnection attempts reached. Please refresh the page.");
+              console.error("❌ Max reconnection attempts reached");
+            }
+          });
+
+          // Play the stream
+          showLoading("Starting playback...");
+          console.log("▶️ Starting playback...");
+          
+          try {
+            await flvPlayer.play();
+            console.log("✅ Playback started successfully");
+          } catch (playError) {
+            console.warn("⚠️ Autoplay blocked. User interaction may be required.", playError);
+            showError("Click the video to start playback (browser autoplay policy)");
+            hideLoading();
+          }
+
+        } catch (err) {
+          console.error("❌ initPlayer error:", err);
+          showError(`Failed to initialize: ${err.message}`);
+          hideLoading();
+          
+          // Retry
+          if (reconnectAttempts < maxReconnectAttempts) {
+            reconnectAttempts++;
+            const delay = 1000;
+            console.log(`🔄 Retrying in ${delay}ms...`);
+            setTimeout(initPlayer, delay);
+          }
+        }
+      }
+
+      // Video element events
+      video.addEventListener("waiting", () => {
+        console.log("⏳ Video buffering...");
+        showLoading("Buffering...");
+      });
+
+      video.addEventListener("playing", () => {
+        console.log("▶️ Video playing");
+        hideLoading();
+      });
+
+      video.addEventListener("error", (e) => {
+        console.error("❌ Video element error:", e);
+        showError("Video playback error");
+      });
+
+      video.addEventListener("stalled", () => {
+        console.warn("⚠️ Video stalled");
+      });
+
+      video.addEventListener("suspend", () => {
+        console.warn("⚠️ Video suspended");
+      });
+
+      video.addEventListener("loadedmetadata", () => {
+        console.log("✅ Video metadata loaded");
+      });
+
+      // Initialize everything when page loads
+      window.addEventListener("load", () => {
+        console.log("=".repeat(60));
+        console.log("🚀 Ultra Low-Latency Stream Viewer");
+        console.log("=".repeat(60));
+        console.log("📅 Loaded at:", new Date().toISOString());
+        console.log("🌐 User Agent:", navigator.userAgent);
+        console.log("=".repeat(60));
+        
+        // Check for flvjs
+        if (typeof flvjs === 'undefined') {
+          console.error("❌ FLV.js not loaded!");
+          showError("FLV.js library failed to load. Check your internet connection.");
+          return;
+        }
+        
+        console.log("✅ FLV.js version:", flvjs.version || "unknown");
+        console.log("✅ FLV.js supported:", flvjs.isSupported());
+        
+        initSocket();
+        
+        // Small delay to ensure everything is ready
+        setTimeout(() => {
+          initPlayer();
+        }, 200);
+      });
+
+      // Cleanup on page unload
+      window.addEventListener("beforeunload", () => {
+        console.log("👋 Page unloading, cleaning up...");
+        if (flvPlayer) {
+          flvPlayer.destroy();
+        }
+        if (socket) {
+          socket.disconnect();
+        }
+      });
+    </script>
+  </body>
+</html>

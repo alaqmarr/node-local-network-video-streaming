@@ -1,0 +1,75 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Live Viewer</title>
+  <script src="https://cdn.jsdelivr.net/npm/hls.js@latest"></script>
+  <script src="/socket.io/socket.io.js"></script>
+  <style>
+    body { margin: 0; background: #000; color: #fff; font-family: sans-serif; display: flex; flex-direction: column; align-items: center; justify-content: center; height: 100vh; }
+    video { width: 90%; max-width: 1080px; border-radius: 12px; background: #000; }
+    #info { margin-top: 10px; font-size: 14px; opacity: 0.8; }
+  </style>
+</head>
+<body>
+  <video id="video" controls autoplay muted playsinline></video>
+  <div id="info">Loading stream...</div>
+
+  <script>
+    const video = document.getElementById('video');
+    const info = document.getElementById('info');
+    const socket = io();
+
+    socket.on('viewerCount', (count) => {
+      info.textContent = `Viewers: ${count}`;
+    });
+
+    async function initPlayer() {
+      try {
+        const res = await fetch('/api/info');
+        const data = await res.json();
+        const streamURL = data.hls;
+
+        if (Hls.isSupported()) {
+          const hls = new Hls({
+            liveSyncDurationCount: 2,
+            liveMaxLatencyDurationCount: 3,
+            maxBufferLength: 3,
+            maxMaxBufferLength: 5,
+            maxLiveSyncPlaybackRate: 1.0,
+            enableWorker: true,
+            lowLatencyMode: true,
+            backBufferLength: 0.1,
+          });
+
+          hls.loadSource(streamURL);
+          hls.attachMedia(video);
+
+          hls.on(Hls.Events.MANIFEST_PARSED, () => {
+            video.play().catch(() => {});
+            info.textContent = "Streaming live...";
+          });
+
+          hls.on(Hls.Events.ERROR, (event, data) => {
+            if (data.fatal) {
+              console.warn('Fatal error:', data);
+              hls.destroy();
+              setTimeout(initPlayer, 2000);
+            }
+          });
+        } else if (video.canPlayType('application/vnd.apple.mpegurl')) {
+          video.src = streamURL;
+          video.addEventListener('loadedmetadata', () => video.play());
+        }
+      } catch (err) {
+        console.error('initPlayer error:', err);
+        info.textContent = 'Error initializing player. Retrying...';
+        setTimeout(initPlayer, 2000);
+      }
+    }
+
+    initPlayer();
+  </script>
+</body>
+</html>
